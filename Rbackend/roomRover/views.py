@@ -7,7 +7,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework_jwt.settings import api_settings
-from .models import Room
+from .models import Room, RoomImage
 
 @api_view(['POST'])
 @csrf_exempt
@@ -68,45 +68,54 @@ def get_all_rooms(request):
         rooms = Room.objects.all()
         room_data = []
         for room in rooms:
-            room_dict = {
+            room_images = room.images.all()
+            image_urls = [image.image.url for image in room_images]
+
+            room_info = {
                 'id': room.id,
+                'user_id': room.user.id,
                 'property_name': room.property_name,
                 'city': room.city,
                 'state': room.state,
-                'size': room.size,
+                'other_facilities': room.other_facilities,
                 'description': room.description,
                 'parking_available': room.parking_available,
                 'bachelors_allowed': room.bachelors_allowed,
                 'contact': room.contact,
                 'rent': room.rent,
-                'image': room.picture.url if room.picture else None,
+                'images': image_urls,
             }
-            room_data.append(room_dict)
-        return JsonResponse({'rooms': room_data})
-    
+            room_data.append(room_info)
+
+        return JsonResponse(room_data, safe=False)
 @api_view(['GET'])
 @csrf_exempt
 def get_room_by_id(request, room_id):
     if request.method == "GET":
-        print(room_id)
         try:
             room = Room.objects.get(pk=room_id)
+            images = room.images.all()  # Adjust this line to use the correct related_name
+            image_urls = [image.image.url for image in images]
+
             room_data = {
                 'id': room.id,
                 'property_name': room.property_name,
                 'city': room.city,
                 'state': room.state,
-                'size': room.size,
+                'other_facilities': room.other_facilities,
                 'description': room.description,
                 'parking_available': room.parking_available,
                 'bachelors_allowed': room.bachelors_allowed,
                 'contact': room.contact,
                 'rent': room.rent,
-                'image': room.picture.url if room.picture else None,
+                'images': image_urls,
             }
             return JsonResponse(room_data)
         except Room.DoesNotExist:
             return JsonResponse({'error': 'Room not found'}, status=404)
+
+
+
         
 @api_view(['POST'])
 @csrf_exempt
@@ -116,36 +125,36 @@ def create_room(request):
         property_name = request.data.get('property_name')
         city = request.data.get('city')
         state = request.data.get('state')
-        size = request.data.get('size')
+        other_facilities = request.data.get('other_facilities')
         description = request.data.get('description')
         parking_available = request.data.get('parking_available') == 'true'
         bachelors_allowed = request.data.get('bachelors_allowed') == 'true'
         contact = request.data.get('contact')
         rent = request.data.get('rent')
         
-        picture = request.FILES.get('picture')
-        
-        # Fetch the user object
+        pictures = request.FILES.getlist('pictures')
+
         try:
             user = User.objects.get(email=email)
         except User.DoesNotExist:
-            return JsonResponse({'error': 'User not found'}, status=404)
+            return JsonResponse({'error': 'User is not registered'}, status=404)
 
-        # Create the room object
         room = Room.objects.create(
             user=user,
             property_name=property_name,
             city=city,
             state=state,
-            size=size,
+            other_facilities= other_facilities,
             description=description,
             parking_available=parking_available,
             bachelors_allowed=bachelors_allowed,
             contact=contact,
             rent=rent,
-            picture=picture,
         )
-        
+
+        for picture in pictures:
+            RoomImage.objects.create(room=room, image=picture)
+
         return JsonResponse({'message': 'Room created successfully', 'room_id': room.id}, status=201)
     else:
         return JsonResponse({'error': 'Invalid request method'}, status=400)
